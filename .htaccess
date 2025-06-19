@@ -1,46 +1,100 @@
 RewriteEngine On
 
-# Permitir CORS para todos los orígenes
+# Habilitar logging de rewrite para debug (comentar en producción)
+# RewriteLog logs/rewrite.log
+# RewriteLogLevel 3
+
+# Configuración de CORS mejorada
 Header always set Access-Control-Allow-Origin "*"
-Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS, DELETE, PATCH"
-Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS, DELETE, PATCH, PUT"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+Header always set Access-Control-Allow-Credentials "true"
 
-# Manejar preflight requests
+# Manejar preflight requests de forma más robusta
 RewriteCond %{REQUEST_METHOD} OPTIONS
-RewriteRule ^(.*)$ $1 [R=200,L]
+RewriteRule ^(.*)$ - [R=200,L]
 
-# Reescribir rutas de API
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
+# Configuración de tipos MIME
+AddType application/json .json
+AddType text/javascript .js
 
-# Rutas de autenticación
-RewriteRule ^api/auth/(.*)$ /api/auth.php [L,QSA]
-
-# Rutas de WhatsApp
-RewriteRule ^api/whatsapp/(.*)$ /api/whatsapp.php [L,QSA]
-
-# Fallback para otras rutas de API
-RewriteRule ^api/(.*)$ /api/$1.php [L,QSA]
-
-# Configuración de seguridad
-<Files "*.php">
+# Evitar que se sirvan archivos de configuración directamente
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|inc|bak|config)$">
     Order Allow,Deny
-    Allow from all
-</Files>
+    Deny from all
+</FilesMatch>
 
-# Evitar acceso directo a archivos de configuración
+# Proteger archivos PHP específicos
 <Files "config.php">
     Order Deny,Allow
     Deny from all
 </Files>
 
-# Configuración de errores
-ErrorDocument 404 /404.html
-ErrorDocument 500 /500.html
+# Reglas de reescritura para API - ORDEN IMPORTANTE
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 
-# Configuración de PHP (si está permitido)
+# API de autenticación
+RewriteRule ^api/auth/?(.*)$ /api/auth.php [L,QSA]
+
+# API de WhatsApp
+RewriteRule ^api/whatsapp/?(.*)$ /api/whatsapp.php [L,QSA]
+
+# Script de verificación del sistema
+RewriteRule ^api/check/?$ /api/check.php [L,QSA]
+
+# Fallback para otras rutas de API
+RewriteRule ^api/([^/]+)/?(.*)$ /api/$1.php [L,QSA]
+
+# Configuración de errores personalizados
+ErrorDocument 400 /error.php?code=400
+ErrorDocument 401 /error.php?code=401
+ErrorDocument 403 /error.php?code=403
+ErrorDocument 404 /error.php?code=404
+ErrorDocument 500 /error.php?code=500
+
+# Configuración de PHP
 <IfModule mod_php.c>
-    php_value display_errors Off
-    php_value log_errors On
+    php_flag display_errors Off
+    php_flag log_errors On
     php_value error_log /tmp/php_errors.log
+    php_value max_execution_time 30
+    php_value memory_limit 128M
+</IfModule>
+
+# Configuración de seguridad adicional
+<IfModule mod_headers.c>
+    # Prevenir ataques XSS
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Configurar CSP básico
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+</IfModule>
+
+# Compresión para mejorar rendimiento
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+    AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+# Cache para archivos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
 </IfModule>
